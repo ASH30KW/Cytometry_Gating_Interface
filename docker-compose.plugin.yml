@@ -1,0 +1,73 @@
+version: "3"
+
+volumes:
+    cp-plugin-cytometrygating-postgres-data:
+        driver: local
+
+services:
+    cp-plugin-cytometrygating-frontend:
+        build: ./cp-plugin-cytometrygating/frontend
+        volumes:
+            - type: bind
+              source: ${CP_MICROSERVICES_HOST_LOCATION}/cp-plugin-cytometrygating/frontend/src
+              target: /usr/src/app/src
+              read_only: true
+        restart: on-failure
+        environment:
+            - CP_COMPONENT_NAME=cytometrygating
+        labels:
+            - "cp.project.namespace=${COMPOSE_PROJECT_NAME}"
+            - "traefik.enable=true"
+            - "traefik.http.routers.cp-plugin-cytometrygating-frontend.rule=PathPrefix(`/frontends/cytometrygating`)"
+            - "traefik.http.routers.cp-plugin-cytometrygating-frontend.entrypoints=web"
+
+    cp-plugin-cytometrygating-backend:
+        build: ./cp-plugin-cytometrygating/backend
+        volumes:
+            - type: bind
+              source: ${CP_MICROSERVICES_HOST_LOCATION}/cp-plugin-cytometrygating/backend/src
+              target: /usr/src/app/src
+              read_only: false
+            # - type: bind
+            #   source: /media/storage/ge38vaq/Project/cp-development/cp-microservices/cp-plugin-cytometrygating/backend/src/computed_data
+            #   target: /media/storage/ge38vaq/Project/cp-development/cp-microservices/cp-plugin-cytometrygating/backend/src/computed_data
+            #   read_only: false
+        links:
+            - cp-plugin-cytometrygating-postgres
+        depends_on:
+            cp-plugin-cytometrygating-postgres:
+                condition: service_healthy
+        restart: on-failure
+        environment:
+            - PGHOST=cp-plugin-cytometrygating-postgres
+            - PGDATABASE=postgres
+            - PGUSER=postgres
+            - PGPASSWORD=postgres
+            - PGPORT=5432
+            - CP_DEV_VSCODEDEBUG_HOST
+            - CP_DEV_VSCODEDEBUG_PORT
+            - CP_DEV_PYCHARMDEBUG_TARGET
+            - CP_DEV_GUNICORN_TIMEOUT=${CP_DEV_GUNICORN_TIMEOUT:-30}
+        labels:
+            - "cp.project.namespace=${COMPOSE_PROJECT_NAME}"
+            - "traefik.enable=true"
+            - "traefik.http.routers.cp-plugin-cytometrygating-backend.rule=PathPrefix(`/cytometrygating`)"
+            - "traefik.http.routers.cp-plugin-cytometrygating-backend.entrypoints=web"
+            #- "traefik.http.routers.cp-plugin-cytometrygating-dataserver.rule=PathPrefix(`/cytometrygating_dataserver`)"
+            #- "traefik.http.routers.cp-plugin-cytometrygating-dataserver.entrypoints=web"
+            #- "traefik.http.routers.cp-plugin-cytometrygating-dataserver.service=cp-plugin-cytometrygating-dataserver"
+            #- "traefik.http.sevices.cp-plugin-cytometrygating-dataserver.loadbalancer.server.port=42279"
+
+    cp-plugin-cytometrygating-postgres:
+        image: postgres:alpine
+        restart: on-failure
+        environment:
+            POSTGRES_PASSWORD: postgres
+            POSTGRES_USER: postgres
+        volumes:
+            - cp-plugin-cytometrygating-postgres-data:/var/lib/postgresql/data:rw
+        healthcheck:
+            test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+            interval: 3s
+            timeout: 5s
+            retries: 5
